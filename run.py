@@ -1,5 +1,6 @@
 from crawler.fetcher import fetch_page
 from crawler.parser import parse_basic_seo
+from crawler.links import extract_links
 from rules.seo_rules import run_seo_checks
 
 if __name__ == "__main__":
@@ -10,6 +11,7 @@ if __name__ == "__main__":
     if page.get("html"):
         seo_data = parse_basic_seo(page["html"])
         issues = run_seo_checks(seo_data)
+        links = extract_links(page["html"], url)
 
         print("\nURL:", page["url"])
         print("Status Code:", page["status_code"])
@@ -24,6 +26,18 @@ if __name__ == "__main__":
                 print(issue)
         else:
             print("✅ No issues found")
+
+        print("\n--- LINK ANALYSIS ---")
+        print("Internal links:", links["internal_count"])
+        print("External links:", links["external_count"])
+
+        print("\nSample Internal Links:")
+        for link in links["internal_links"][:5]:
+            print(link)
+
+        print("\nSample External Links:")
+        for link in links["external_links"][:5]:
+            print(link)
 
     else:
         print("Error:", page.get("error"))
