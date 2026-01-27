@@ -1,43 +1,35 @@
-from crawler.fetcher import fetch_page
-from crawler.parser import parse_basic_seo
-from crawler.links import extract_links
-from rules.seo_rules import run_seo_checks
+from crawler.site_crawler import crawl_site
 
 if __name__ == "__main__":
-    url = "https://togrowmarketing.com"
+    start_url = "https://togrowmarketing.com"
 
-    page = fetch_page(url)
+    results = crawl_site(start_url, max_pages=10)
 
-    if page.get("html"):
-        seo_data = parse_basic_seo(page["html"])
-        issues = run_seo_checks(seo_data)
-        links = extract_links(page["html"], url)
+    print("\n========== SITE AUDIT SUMMARY ==========")
+    print(f"Total pages crawled: {len(results)}")
 
-        print("\nURL:", page["url"])
-        print("Status Code:", page["status_code"])
+    missing_h1 = 0
+    long_titles = 0
+    zero_internal_links = 0
 
-        print("\n--- SEO DATA ---")
-        for key, value in seo_data.items():
-            print(f"{key}: {value}")
+    for page in results:
+        if "❌ Missing H1 tag" in page["issues"]:
+            missing_h1 += 1
 
-        print("\n--- SEO ISSUES FOUND ---")
-        if issues:
-            for issue in issues:
+        for issue in page["issues"]:
+            if "Title too long" in issue:
+                long_titles += 1
+
+        if page["internal_links_count"] == 0:
+            zero_internal_links += 1
+
+    print(f"Pages missing H1: {missing_h1}")
+    print(f"Pages with long titles: {long_titles}")
+    print(f"Pages with zero internal links: {zero_internal_links}")
+
+    print("\n========== PAGE LEVEL ISSUES ==========")
+    for page in results:
+        if page["issues"]:
+            print(f"\n{page['url']}")
+            for issue in page["issues"]:
                 print(issue)
-        else:
-            print("✅ No issues found")
-
-        print("\n--- LINK ANALYSIS ---")
-        print("Internal links:", links["internal_count"])
-        print("External links:", links["external_count"])
-
-        print("\nSample Internal Links:")
-        for link in links["internal_links"][:5]:
-            print(link)
-
-        print("\nSample External Links:")
-        for link in links["external_links"][:5]:
-            print(link)
-
-    else:
-        print("Error:", page.get("error"))
