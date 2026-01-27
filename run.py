@@ -1,5 +1,6 @@
 from crawler.fetcher import fetch_page
 from crawler.parser import parse_basic_seo
+from rules.seo_rules import run_seo_checks
 
 if __name__ == "__main__":
     url = "https://togrowmarketing.com"
@@ -8,11 +9,21 @@ if __name__ == "__main__":
 
     if page.get("html"):
         seo_data = parse_basic_seo(page["html"])
+        issues = run_seo_checks(seo_data)
 
-        print("URL:", page["url"])
+        print("\nURL:", page["url"])
         print("Status Code:", page["status_code"])
-        print("Title:", seo_data["title"])
-        print("Meta Description:", seo_data["meta_description"])
-        print("H1:", seo_data["h1"])
+
+        print("\n--- SEO DATA ---")
+        for key, value in seo_data.items():
+            print(f"{key}: {value}")
+
+        print("\n--- SEO ISSUES FOUND ---")
+        if issues:
+            for issue in issues:
+                print(issue)
+        else:
+            print("✅ No issues found")
+
     else:
         print("Error:", page.get("error"))
