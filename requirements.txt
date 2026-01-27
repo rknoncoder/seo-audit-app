@@ -4,3 +4,4 @@ lxml
 fastapi
 uvicorn
 pandas
+xlsxwriter
