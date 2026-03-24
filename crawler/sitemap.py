@@ -1,11 +1,14 @@
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse
+
+
+HEADERS = {"User-Agent": "SEO-Audit-App/1.0"}
 
 
 def possible_sitemap_urls(site_url):
     """
-    Generate possible sitemap locations
+    Generate possible sitemap locations.
     """
     parsed = urlparse(site_url)
     domain = parsed.netloc.replace("www.", "")
@@ -18,83 +21,68 @@ def possible_sitemap_urls(site_url):
     ]
 
 
-def fetch_sitemap_urls(site_url):
-    sitemap_urls = possible_sitemap_urls(site_url)
+def fetch_sitemap_document(sitemap_url, timeout=15):
+    try:
+        response = requests.get(sitemap_url, headers=HEADERS, timeout=timeout)
+        if response.status_code != 200:
+            return None
+        return BeautifulSoup(response.text, "xml")
+    except requests.exceptions.RequestException:
+        return None
+
+
+def extract_url_entries(soup):
+    urls = []
+    for url in soup.find_all("url"):
+        loc = url.find("loc")
+        if loc and loc.text:
+            urls.append(loc.text.strip())
+    return urls
+
+
+def fetch_child_sitemap(sitemap_url):
+    print(f"   Fetching child sitemap: {sitemap_url}")
+
+    soup = fetch_sitemap_document(sitemap_url, timeout=8)
+    if not soup:
+        return []
+
+    return extract_url_entries(soup)
+
+
+def fetch_sitemap_urls(site_url=None, sitemap_url=None):
+    sitemap_candidates = []
+
+    if sitemap_url:
+        sitemap_candidates.append(sitemap_url)
+
+    if site_url:
+        for candidate in possible_sitemap_urls(site_url):
+            if candidate not in sitemap_candidates:
+                sitemap_candidates.append(candidate)
+
     all_urls = []
 
-    for sitemap_url in sitemap_urls:
-        try:
-            response = requests.get(
-                sitemap_url,
-                headers={"User-Agent": "SEO-Audit-App/1.0"},
-                timeout=15
-            )
-
-            if response.status_code != 200:
-                continue
-
-            print(f"✔ Sitemap found: {sitemap_url}")
-
-            soup = BeautifulSoup(response.text, "xml")
-
-            # Case 1: Sitemap Index
-            sitemap_tags = soup.find_all("sitemap")
-            if sitemap_tags:
-                for sitemap in sitemap_tags:
-                    loc = sitemap.find("loc")
-                    if loc:
-                        all_urls.extend(fetch_child_sitemap(loc.text.strip()))
-                return list(set(all_urls))
-
-            # Case 2: Regular Sitemap
-            url_tags = soup.find_all("url")
-            for url in url_tags:
-                loc = url.find("loc")
-                if loc:
-                    all_urls.append(loc.text.strip())
-
-            if all_urls:
-                return list(set(all_urls))
-
-        except requests.exceptions.RequestException:
+    for candidate in sitemap_candidates:
+        soup = fetch_sitemap_document(candidate)
+        if not soup:
             continue
 
-    print("❌ No valid sitemap found.")
+        print(f"Sitemap found: {candidate}")
+
+        sitemap_tags = soup.find_all("sitemap")
+        if sitemap_tags:
+            for sitemap in sitemap_tags:
+                loc = sitemap.find("loc")
+                if loc and loc.text:
+                    all_urls.extend(fetch_child_sitemap(loc.text.strip()))
+            if all_urls:
+                return list(set(all_urls))
+            continue
+
+        all_urls.extend(extract_url_entries(soup))
+        if all_urls:
+            return list(set(all_urls))
+
+    print("No valid sitemap found.")
     return []
-
-
-def fetch_child_sitemap(sitemap_url, max_pages=5):
-    urls = []
-    page = 1
-
-    while page <= max_pages:
-        paged_url = sitemap_url if page == 1 else f"{sitemap_url}?page={page}"
-        print(f"   ↳ Fetching: {paged_url}")
-
-        try:
-            response = requests.get(
-                paged_url,
-                headers={"User-Agent": "SEO-Audit-App/1.0"},
-                timeout=8
-            )
-
-            if response.status_code != 200:
-                break
-
-            soup = BeautifulSoup(response.text, "xml")
-            url_tags = soup.find_all("url")
-
-            if not url_tags:
-                break
-
-            for url in url_tags:
-                loc = url.find("loc")
-                if loc:
-                    urls.append(loc.text.strip())
-
-            page += 1
-
-        except requests.exceptions.RequestException:
-            break
-
-    return urls

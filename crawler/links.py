@@ -1,18 +1,33 @@
+from urllib.parse import urldefrag, urljoin, urlparse
+
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse, urljoin
 
 
 def normalize_domain(url):
-    """
-    Convert:
-    - https://www.example.com
-    - http://example.com
-    into: example.com
-    """
     domain = urlparse(url).netloc.lower()
     if domain.startswith("www."):
         domain = domain.replace("www.", "", 1)
     return domain
+
+
+def normalize_link(url):
+    normalized, _ = urldefrag(url)
+    parsed = urlparse(normalized)
+
+    scheme = parsed.scheme.lower()
+    netloc = parsed.netloc.lower()
+
+    if netloc.endswith(":80") and scheme == "http":
+        netloc = netloc[:-3]
+    if netloc.endswith(":443") and scheme == "https":
+        netloc = netloc[:-4]
+
+    path = parsed.path or "/"
+    if path != "/" and path.endswith("/"):
+        path = path.rstrip("/")
+
+    normalized_url = parsed._replace(scheme=scheme, netloc=netloc, path=path, fragment="")
+    return normalized_url.geturl()
 
 
 def extract_links(html, base_url):
@@ -20,7 +35,6 @@ def extract_links(html, base_url):
 
     internal_links = set()
     external_links = set()
-
     base_domain = normalize_domain(base_url)
 
     for link in soup.find_all("a", href=True):
@@ -34,9 +48,7 @@ def extract_links(html, base_url):
         ):
             continue
 
-        full_url = urljoin(base_url, href)
-        parsed_url = urlparse(full_url)
-
+        full_url = normalize_link(urljoin(base_url, href))
         link_domain = normalize_domain(full_url)
 
         if link_domain == base_domain:
@@ -45,8 +57,8 @@ def extract_links(html, base_url):
             external_links.add(full_url)
 
     return {
-        "internal_links": list(internal_links),
-        "external_links": list(external_links),
+        "internal_links": sorted(internal_links),
+        "external_links": sorted(external_links),
         "internal_count": len(internal_links),
         "external_count": len(external_links),
     }
