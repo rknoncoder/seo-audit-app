@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import pandas as pd
 
 from rules.seo_rules import (
@@ -19,6 +21,16 @@ from rules.technical import (
 )
 
 
+LOW_VALUE_PATTERNS = {
+    "/tag/": "Tag",
+    "/category/": "Category",
+    "/author/": "Author",
+    "/page/": "Pagination",
+    "/feed/": "Feed",
+    "/wp-json/": "WP JSON",
+}
+
+
 def add_orphan_sheet(writer, orphan_urls):
     if not orphan_urls:
         df = pd.DataFrame({"Message": ["No orphan pages detected"]})
@@ -36,6 +48,45 @@ def get_schema_recommendation(expected):
         "Person": "Add Person schema with name, jobTitle, sameAs links, etc.",
     }
     return recommendations.get(expected, "Add appropriate structured data schema")
+
+
+def classify_low_value_url(url):
+    lower_url = url.lower()
+    for pattern, label in LOW_VALUE_PATTERNS.items():
+        if pattern in lower_url:
+            return label
+    return None
+
+
+def build_low_value_urls_df(results):
+    low_value_map = defaultdict(set)
+    low_value_types = {}
+
+    for result in results:
+        source_url = result["url"]
+        for link in result.get("internal_links", []):
+            url_type = classify_low_value_url(link)
+            if not url_type:
+                continue
+            low_value_map[link].add(source_url)
+            low_value_types[link] = url_type
+
+    if not low_value_map:
+        return pd.DataFrame({"Message": ["No low-value internal URLs detected"]})
+
+    rows = []
+    for url in sorted(low_value_map):
+        source_pages = sorted(low_value_map[url])
+        rows.append(
+            {
+                "Low Value URL": url,
+                "Type": low_value_types[url],
+                "Linked From Page Count": len(source_pages),
+                "Sample Source Pages": ", ".join(source_pages[:5]),
+            }
+        )
+
+    return pd.DataFrame(rows)
 
 
 def export_to_excel(results, orphan_pages, schema_gaps, filename="seo-audit.xlsx"):
@@ -87,6 +138,12 @@ def export_to_excel(results, orphan_pages, schema_gaps, filename="seo-audit.xlsx
             for issue in result.get("technical", {}).get("issues", [])
         )
     )
+    low_value_urls_df = build_low_value_urls_df(results)
+    low_value_url_count = (
+        0
+        if "Low Value URL" not in low_value_urls_df.columns
+        else len(low_value_urls_df.index)
+    )
 
     summary_df = pd.DataFrame(
         [
@@ -103,6 +160,7 @@ def export_to_excel(results, orphan_pages, schema_gaps, filename="seo-audit.xlsx
             {"Metric": "Pages Blocked By robots.txt", "Value": robots_blocked},
             {"Metric": "Pages With Broken Internal Links", "Value": broken_internal_links},
             {"Metric": "Pages With Unverified Internal Links", "Value": unverified_internal_links},
+            {"Metric": "Low Value Internal URLs Found", "Value": low_value_url_count},
         ]
     )
 
@@ -175,6 +233,7 @@ def export_to_excel(results, orphan_pages, schema_gaps, filename="seo-audit.xlsx
         pages_df.to_excel(writer, sheet_name="Page Audit", index=False)
         technical_df.to_excel(writer, sheet_name="Technical SEO", index=False)
         links_df.to_excel(writer, sheet_name="Links", index=False)
+        low_value_urls_df.to_excel(writer, sheet_name="Low Value URLs", index=False)
         add_orphan_sheet(writer, orphan_pages)
 
         if schema_gaps:

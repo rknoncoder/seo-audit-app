@@ -258,9 +258,12 @@ def append_broken_internal_link_issues(results, max_links_to_check=250):
     for result in results:
         broken_links = []
         unverified_links = []
+        page_url = normalize_url(result.get("final_url") or result["url"])
 
         for link in result.get("internal_links", []):
             normalized = normalize_link(link)
+            if normalize_url(normalized) == page_url:
+                continue
             if normalized not in checked_urls:
                 unverified_links.append(normalized)
                 continue
